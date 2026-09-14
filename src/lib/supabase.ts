@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { resetLookupCache } from '../services/studentService';
 
 export const DEFAULT_SUPABASE_URL = 'https://ppynzitnihxmdgeqsrjd.supabase.co';
 
@@ -52,6 +53,8 @@ export function storeSupabaseCredentials(anonKey: string, url?: string): void {
   }
   // Clear cached client so next getSupabaseClient re-instantiates
   cachedClient = null;
+  // Reset lookup cache so sections/programs are re-fetched with new key
+  resetLookupCache();
 }
 
 /**
@@ -62,6 +65,7 @@ export function clearStoredSupabaseCredentials(): void {
   localStorage.removeItem(STORAGE_KEY_ANON);
   localStorage.removeItem(STORAGE_KEY_URL);
   cachedClient = null;
+  resetLookupCache();
 }
 
 let cachedClient: SupabaseClient | null = null;
@@ -122,20 +126,29 @@ export async function testSupabaseConnection(
     const testClient = createClient(url, key);
     const { data, error, count } = await testClient
       .from('students')
-      .select('*', { count: 'exact', head: true });
+      .select('id', { count: 'exact' })
+      .limit(1);
 
     if (error) {
       // If table doesn't exist yet (42P01 in Postgres), give clear helpful error
-      if (error.code === '42P01' || error.message.includes('does not exist')) {
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
         return {
           success: false,
           message:
             'Connected to Supabase, but the "students" table does not exist yet. Please run the SQL schema in your Supabase SQL Editor.',
         };
       }
+      if (error.code === '42501' || error.message?.includes('permission denied')) {
+        return {
+          success: false,
+          message:
+            'Permission denied (Code: 42501). Please run the GRANT permissions SQL script in Supabase SQL Editor.',
+        };
+      }
+      const errDetail = error.message || error.hint || error.details || 'Connection unauthorized or rejected';
       return {
         success: false,
-        message: `Database error: ${error.message} (Code: ${error.code || 'UNKNOWN'})`,
+        message: `Database error: ${errDetail} (Code: ${error.code || 'UNKNOWN'})`,
       };
     }
 

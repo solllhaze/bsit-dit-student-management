@@ -60,6 +60,17 @@ let cachedSections: SectionRow[] = [];
 let lookupsLoaded = false;
 
 /**
+ * Reset the in-memory lookup cache. Called when Supabase credentials change
+ * so the next operation fetches fresh data with the new key.
+ */
+export function resetLookupCache(): void {
+  cachedPrograms = [];
+  cachedYearLevels = [];
+  cachedSections = [];
+  lookupsLoaded = false;
+}
+
+/**
  * Load programs, year_levels, and sections from Supabase.
  * Cached in memory after first load.
  */
@@ -85,7 +96,10 @@ export async function fetchLookupData(force = false): Promise<{
       if (!yearRes.error && yearRes.data) cachedYearLevels = yearRes.data as YearLevelRow[];
       if (!secRes.error && secRes.data) cachedSections = secRes.data as SectionRow[];
 
-      lookupsLoaded = true;
+      // Only mark as loaded if we successfully loaded sections
+      if (!progRes.error && !yearRes.error && !secRes.error && cachedSections.length > 0) {
+        lookupsLoaded = true;
+      }
     } catch (err) {
       console.warn('Could not fetch lookup tables:', err);
     }
