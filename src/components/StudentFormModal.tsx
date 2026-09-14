@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   UserPlus,
@@ -74,43 +74,65 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
     setErrors({});
   }, [initialData, isOpen]);
 
-  // When Course or YearLevel changes, update candidate section
+  // When Course or YearLevel changes, auto-detect the matching section
   const handleCourseChange = (newCourse: DegreeProgram) => {
     setCourse(newCourse);
-    const yrNum = yearLevel.charAt(0);
-    const candidate = `${newCourse} ${yrNum}A`;
+    let targetYear = yearLevel;
+    // DIT only supports 1st, 2nd, and 3rd Year
+    if (newCourse === 'DIT' && targetYear === '4th Year') {
+      targetYear = '3rd Year';
+      setYearLevel('3rd Year');
+    }
+    const targetYrNum = targetYear.charAt(0);
     const available = newCourse === 'BSIT' ? ALL_BSIT_SECTIONS : ALL_DIT_SECTIONS;
-    if (available.includes(candidate)) {
-      setSection(candidate);
+    const currentLetter = section.slice(-1);
+    const candidateWithLetter = `${newCourse} ${targetYrNum}${currentLetter}`;
+    const defaultCandidate = `${newCourse} ${targetYrNum}A`;
+
+    if (available.includes(candidateWithLetter)) {
+      setSection(candidateWithLetter);
+    } else if (available.includes(defaultCandidate)) {
+      setSection(defaultCandidate);
     } else {
-      setSection(available[0]);
+      const match = available.find((s) => s.includes(` ${targetYrNum}`));
+      if (match) setSection(match);
     }
   };
 
   const handleYearChange = (newYear: YearLevel) => {
     setYearLevel(newYear);
-    const yrNum = newYear.charAt(0);
-    const candidate = `${course} ${yrNum}A`;
-    const available = course === 'BSIT' ? ALL_BSIT_SECTIONS : ALL_DIT_SECTIONS;
-    if (available.includes(candidate)) {
-      setSection(candidate);
-    } else if (available.includes(`${course} ${yrNum}B`)) {
-      setSection(`${course} ${yrNum}B`);
+    let targetCourse = course;
+    // If 4th Year is chosen, ensure course is BSIT (DIT only has 1st-3rd Year)
+    if (newYear === '4th Year' && targetCourse === 'DIT') {
+      targetCourse = 'BSIT';
+      setCourse('BSIT');
+    }
+    const targetYrNum = newYear.charAt(0);
+    const available = targetCourse === 'BSIT' ? ALL_BSIT_SECTIONS : ALL_DIT_SECTIONS;
+    const currentLetter = section.slice(-1);
+    const candidateWithLetter = `${targetCourse} ${targetYrNum}${currentLetter}`;
+    const defaultCandidate = `${targetCourse} ${targetYrNum}A`;
+
+    if (available.includes(candidateWithLetter)) {
+      setSection(candidateWithLetter);
+    } else if (available.includes(defaultCandidate)) {
+      setSection(defaultCandidate);
     } else {
-      setSection(available[0]);
+      const match = available.find((s) => s.includes(` ${targetYrNum}`));
+      if (match) setSection(match);
     }
   };
 
-  // When user selects a section, automatically sync Course & Year Level
+  // When user selects a section, automatically sync and detect Course & Year Level
   const handleSectionSelect = (newSection: string) => {
     setSection(newSection);
-    // Sync Course
+    // Auto-detect Course from prefix
     if (newSection.startsWith('BSIT')) {
       setCourse('BSIT');
     } else if (newSection.startsWith('DIT')) {
       setCourse('DIT');
     }
-    // Sync Year
+    // Auto-detect Year from digit
     if (newSection.includes(' 1')) {
       setYearLevel('1st Year');
     } else if (newSection.includes(' 2')) {
@@ -173,6 +195,12 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
 
   const currentProgramSections = course === 'BSIT' ? ALL_BSIT_SECTIONS : ALL_DIT_SECTIONS;
   const otherProgramSections = course === 'BSIT' ? ALL_DIT_SECTIONS : ALL_BSIT_SECTIONS;
+
+  // Compute detected sections for the currently selected Course and Year Level
+  const yrNum = yearLevel.charAt(0);
+  const detectedSections = useMemo(() => {
+    return currentProgramSections.filter((s) => s.includes(` ${yrNum}`));
+  }, [currentProgramSections, yrNum]);
 
   return (
     <div
@@ -412,18 +440,29 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
                 <option value="1st Year">1st Year</option>
                 <option value="2nd Year">2nd Year</option>
                 <option value="3rd Year">3rd Year</option>
-                <option value="4th Year">4th Year</option>
+                {course === 'BSIT' ? (
+                  <option value="4th Year">4th Year</option>
+                ) : (
+                  <option value="4th Year" disabled>
+                    4th Year (BSIT Only)
+                  </option>
+                )}
               </select>
             </div>
 
-            {/* Section DROPDOWN (BSIT 1A, 1B, 1C, etc.) */}
+            {/* Section DROPDOWN (Auto-detects on Year change) */}
             <div>
-              <label
-                htmlFor="field-section-select"
-                className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5"
-              >
-                Section <span className="text-rose-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="field-section-select"
+                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider"
+                >
+                  Section <span className="text-rose-500">*</span>
+                </label>
+                <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/60 px-2 py-0.5 rounded-full">
+                  Auto-detected
+                </span>
+              </div>
               <select
                 id="field-section-select"
                 value={section}
@@ -434,14 +473,23 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
                     : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/20'
                 }`}
               >
-                <optgroup label={`${course} Sections`}>
-                  {currentProgramSections.map((secOpt) => (
+                <optgroup label={`${course} - ${yearLevel} (Detected Sections)`}>
+                  {detectedSections.map((secOpt) => (
                     <option key={secOpt} value={secOpt}>
                       {secOpt}
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label={`Other Sections (${course === 'BSIT' ? 'DIT' : 'BSIT'})`}>
+                <optgroup label={`All Other ${course} Sections`}>
+                  {currentProgramSections
+                    .filter((s) => !detectedSections.includes(s))
+                    .map((secOpt) => (
+                      <option key={secOpt} value={secOpt}>
+                        {secOpt}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label={`Other Course (${course === 'BSIT' ? 'DIT' : 'BSIT'})`}>
                   {otherProgramSections.map((secOpt) => (
                     <option key={secOpt} value={secOpt}>
                       {secOpt}
@@ -449,6 +497,27 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
                   ))}
                 </optgroup>
               </select>
+
+              {/* Quick-select pills for detected sections of the chosen year */}
+              {detectedSections.length > 0 && (
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="text-[11px] text-slate-500 font-medium mr-0.5">Quick:</span>
+                  {detectedSections.map((secOpt) => (
+                    <button
+                      key={secOpt}
+                      type="button"
+                      onClick={() => handleSectionSelect(secOpt)}
+                      className={`px-2 py-0.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+                        section === secOpt
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-200'
+                      }`}
+                    >
+                      {secOpt}
+                    </button>
+                  ))}
+                </div>
+              )}
               {errors.section && (
                 <p className="text-xs text-rose-600 mt-1 flex items-center gap-1">
                   <AlertCircle className="w-3.5 h-3.5" />

@@ -68,6 +68,37 @@ export const SearchFilterPanel: React.FC<SearchFilterPanelProps> = ({
     return true;
   });
 
+  // Handler for Year Level change: if current section doesn't match the new year, reset to 'All Sections'
+  const handleYearFilterChange = (newYear: 'All' | YearLevel) => {
+    const updates: Partial<FilterState> = { year: newYear };
+    if (newYear !== 'All' && filters.section !== 'All Sections') {
+      const yrDigit = newYear.charAt(0);
+      if (!filters.section.includes(` ${yrDigit}`)) {
+        updates.section = 'All Sections';
+      }
+    }
+    onFilterChange(updates);
+  };
+
+  // Handler for Section change: auto-detect and sync Course and Year Level
+  const handleSectionFilterChange = (newSection: string) => {
+    const updates: Partial<FilterState> = { section: newSection };
+    if (newSection !== 'All Sections') {
+      // Auto-detect course
+      if (newSection.startsWith('BSIT')) {
+        updates.course = 'BSIT';
+      } else if (newSection.startsWith('DIT')) {
+        updates.course = 'DIT';
+      }
+      // Auto-detect year
+      if (newSection.includes(' 1')) updates.year = '1st Year';
+      else if (newSection.includes(' 2')) updates.year = '2nd Year';
+      else if (newSection.includes(' 3')) updates.year = '3rd Year';
+      else if (newSection.includes(' 4')) updates.year = '4th Year';
+    }
+    onFilterChange(updates);
+  };
+
   const hasActiveFilters =
     filters.search.trim() !== '' ||
     filters.course !== 'All' ||
@@ -208,8 +239,8 @@ export const SearchFilterPanel: React.FC<SearchFilterPanelProps> = ({
                 <button
                   key={opt.value}
                   id={`filter-year-${opt.label.toLowerCase()}`}
-                  onClick={() => onFilterChange({ year: opt.value })}
-                  className={`flex-1 py-1.5 px-1 text-xs font-semibold rounded-lg transition-all text-center ${
+                  onClick={() => handleYearFilterChange(opt.value)}
+                  className={`flex-1 py-1.5 px-1 text-xs font-semibold rounded-lg transition-all text-center cursor-pointer ${
                     isSelected
                       ? 'bg-white text-indigo-900 shadow-xs border border-slate-200/60'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
@@ -233,7 +264,7 @@ export const SearchFilterPanel: React.FC<SearchFilterPanelProps> = ({
           <select
             id="section-filter-select"
             value={filters.section}
-            onChange={(e) => onFilterChange({ section: e.target.value })}
+            onChange={(e) => handleSectionFilterChange(e.target.value)}
             className="w-full py-2 px-3 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl text-xs sm:text-sm font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/15 transition-all shadow-2xs"
           >
             {filteredSections.map((sec) => (
@@ -257,10 +288,9 @@ export const SearchFilterPanel: React.FC<SearchFilterPanelProps> = ({
                   key={qy}
                   id={`quick-filter-${qy.toLowerCase().replace(' ', '-')}`}
                   onClick={() => {
-                    // Toggle if already selected, or set
-                    onFilterChange({ year: isSelected ? 'All' : qy });
+                    handleYearFilterChange(isSelected ? 'All' : qy);
                   }}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
                     isSelected
                       ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
