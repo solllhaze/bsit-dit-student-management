@@ -1,0 +1,6 @@
+{
+  "name": "Student Management System",
+  "description": "BSIT & DIT Student User Management System with search, filtering, and record management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
