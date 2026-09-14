@@ -14,17 +14,21 @@ import {
   FileText,
   FileCode,
   ChevronDown,
-  Loader2
+  Loader2,
+  Plus,
+  Database
 } from 'lucide-react';
 import { Student } from '../types';
 import { getFullName, formatSectionShort } from '../data/mockStudents';
 
 interface StudentTableProps {
   students: Student[];
+  totalDatabaseCount?: number;
   onViewStudent: (student: Student) => void;
   onEditStudent: (student: Student) => void;
   onDeleteStudent: (student: Student) => void;
   onClearFilters: () => void;
+  onAddStudent?: () => void;
   onExport: (format: 'csv' | 'pdf' | 'docx') => void;
   onExportCSV?: () => void;
   isExporting?: 'csv' | 'pdf' | 'docx' | null;
@@ -32,10 +36,12 @@ interface StudentTableProps {
 
 export const StudentTable: React.FC<StudentTableProps> = ({
   students,
+  totalDatabaseCount,
   onViewStudent,
   onEditStudent,
   onDeleteStudent,
   onClearFilters,
+  onAddStudent,
   onExport,
   onExportCSV,
   isExporting = null,
@@ -269,29 +275,57 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
       {/* Table Content or Empty State */}
       {students.length === 0 ? (
-        /* Empty State (Section 22) */
-        <div
-          id="student-records-empty-state"
-          className="p-12 sm:p-16 text-center flex flex-col items-center justify-center"
-        >
-          <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 mb-4">
-            <SearchX className="w-7 h-7" />
-          </div>
-          <h3 className="text-base sm:text-lg font-bold text-slate-900">
-            No students found
-          </h3>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-sm">
-            Try changing your search or filter options to locate matching BSIT or DIT student records.
-          </p>
-          <button
-            id="empty-state-clear-filters-btn"
-            onClick={onClearFilters}
-            className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs sm:text-sm font-semibold border border-indigo-200 transition-colors"
+        totalDatabaseCount === 0 ? (
+          /* Empty Database State (Section 15: Clean Database State) */
+          <div
+            id="student-records-empty-state"
+            className="p-12 sm:p-16 text-center flex flex-col items-center justify-center"
           >
-            <RotateCcw className="w-4 h-4" />
-            <span>Clear Filters</span>
-          </button>
-        </div>
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-4 shadow-2xs">
+              <Database className="w-7 h-7" />
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-slate-900">
+              No student records found.
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-sm">
+              Your Supabase student database is currently clean and empty. Click below to add your first student record.
+            </p>
+            {onAddStudent && (
+              <button
+                id="empty-state-add-student-btn"
+                onClick={onAddStudent}
+                className="mt-5 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-sm shadow-indigo-600/20 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Student</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          /* Filtered Empty State */
+          <div
+            id="student-records-empty-state"
+            className="p-12 sm:p-16 text-center flex flex-col items-center justify-center"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 mb-4">
+              <SearchX className="w-7 h-7" />
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-slate-900">
+              No students found
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-sm">
+              Try changing your search or filter options to locate matching BSIT or DIT student records.
+            </p>
+            <button
+              id="empty-state-clear-filters-btn"
+              onClick={onClearFilters}
+              className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs sm:text-sm font-semibold border border-indigo-200 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Clear Filters</span>
+            </button>
+          </div>
+        )
       ) : (
         /* Data Table (Section 14 & 15) */
         <div className="overflow-x-auto">

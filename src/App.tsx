@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { StatsCards } from './components/StatsCards';
@@ -15,20 +15,28 @@ import { SectionsView } from './components/SectionsView';
 import { SettingsView } from './components/SettingsView';
 import { ToastContainer } from './components/Toast';
 import { Student, FilterState, ToastMessage, YearLevel } from './types';
-import { INITIAL_STUDENTS, AVAILABLE_SECTIONS, getFullName, formatSectionShort } from './data/mockStudents';
+import { AVAILABLE_SECTIONS, getFullName, formatSectionShort } from './data/mockStudents';
 import {
   exportStudentsToCSV,
   exportStudentsToPDF,
   exportStudentsToWord
 } from './utils/exportUtils';
+import {
+  fetchStudents,
+  addStudent as addStudentService,
+  updateStudent as updateStudentService,
+  deleteStudent as deleteStudentService,
+  deleteAllStudents as deleteAllStudentsService
+} from './services/studentService';
 
 export default function App() {
   // Navigation State: 'students' | 'dashboard' | 'reports' | 'courses' | 'sections' | 'settings'
   const [currentNav, setCurrentNav] = useState('students');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  // Student Records State
-  const [students, setStudents] = useState<Student[]>(INITIAL_STUDENTS);
+  // Student Records State (starts empty - 0 records, live Supabase backend)
+  const [students, setStudents] = useState<Student[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Filter & Search State
   const [filters, setFilters] = useState<FilterState>({
@@ -46,7 +54,7 @@ export default function App() {
   const [formStudent, setFormStudent] = useState<Student | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
-  const [deleteStudent, setDeleteStudent] = useState<Student | null>(null);
+  const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<'csv' | 'pdf' | 'docx' | null>(null);
 
@@ -56,7 +64,7 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
-    const id = Date.now().toString();
+    const id = Date.now().toString() + Math.random().toString().slice(2, 6);
     setToasts((prev) => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -67,7 +75,29 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Filter logic: all filters work in conjunction (Section 13)
+  // Fetch student records from Supabase on mount
+  const loadStudents = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const result = await fetchStudents();
+      if (result.error) {
+        showToast(result.error, 'error');
+      } else {
+        setStudents(result.data);
+      }
+    } catch (err) {
+      console.error('Failed to load students from Supabase:', err);
+      showToast('Unable to connect to the database. Please try again.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStudents();
+  }, [loadStudents]);
+
+  // Filter logic: all filters work in conjunction (Section 10: AND logic)
   const filteredStudents = useMemo(() => {
     return students.filter((student) => {
       // 1. Search filter: student name or student ID (e.g. "Hazel" or "2024-01402")
@@ -77,7 +107,9 @@ export default function App() {
         const studentId = student.studentId.toLowerCase();
         const matchesName = fullName.includes(query);
         const matchesId = studentId.includes(query);
-        if (!matchesName && !matchesId) {
+        const matchesCourse = student.course.toLowerCase().includes(query);
+        const matchesSection = student.section.toLowerCase().includes(query);
+        if (!matchesName && !matchesId && !matchesCourse && !matchesSection) {
           return false;
         }
       }
@@ -129,7 +161,7 @@ export default function App() {
     setFilters((prev) => ({ ...prev, ...newFilters }));
   };
 
-  // Handler: Reset filters (Section 13)
+  // Handler: Reset filters
   const handleResetFilters = () => {
     setFilters({
       search: '',
@@ -152,59 +184,92 @@ export default function App() {
     setIsFormOpen(true);
   };
 
-  const handleSaveStudent = (
+  const handleSaveStudent = async (
     studentData: Omit<Student, 'id'>,
     existingId?: string
   ) => {
     if (existingId) {
-      // Update existing student
-      setStudents((prev) =>
-        prev.map((s) => (s.id === existingId ? { ...studentData, id: existingId } : s))
-      );
-      // Update details modal if currently open for this student
-      if (detailsStudent && detailsStudent.id === existingId) {
-        setDetailsStudent({ ...studentData, id: existingId });
+      // UPDATE STUDENT (Section 6)
+      const res = await updateStudentService(existingId, studentData);
+      if (res.error) {
+        showToast(res.error, 'error');
+      } else if (res.data) {
+        const updated = res.data;
+        setStudents((prev) =>
+          prev.map((s) => (s.id === existingId ? updated : s))
+        );
+        if (detailsStudent && detailsStudent.id === existingId) {
+          setDetailsStudent(updated);
+        }
+        showToast('Student updated successfully.', 'success');
       }
-      showToast(`Updated record for ${getFullName(studentData)}.`);
     } else {
-      // Add new student
-      const newStudent: Student = {
-        ...studentData,
-        id: `std-${Date.now()}`,
-      };
-      setStudents((prev) => [newStudent, ...prev]);
-      showToast(`Added new student: ${getFullName(studentData)}.`);
+      // ADD STUDENT (Section 5)
+      const res = await addStudentService(studentData);
+      if (res.error) {
+        showToast(res.error, 'error');
+      } else if (res.data) {
+        const created = res.data;
+        setStudents((prev) => [created, ...prev]);
+        showToast('Student added successfully.', 'success');
+      }
     }
   };
 
-  // Student CRUD: View Details
+  // Student CRUD: View Details (Section 8)
   const handleOpenViewDetails = (student: Student) => {
     setDetailsStudent(student);
     setIsDetailsOpen(true);
   };
 
-  // Student CRUD: Delete
+  // Student CRUD: Delete (Section 7)
   const handleOpenDeleteConfirm = (student: Student) => {
-    setDeleteStudent(student);
+    setStudentToDelete(student);
     setIsDeleteOpen(true);
   };
 
-  const handleConfirmDelete = () => {
-    if (!deleteStudent) return;
-    const name = getFullName(deleteStudent);
-    setStudents((prev) => prev.filter((s) => s.id !== deleteStudent.id));
-    if (detailsStudent && detailsStudent.id === deleteStudent.id) {
-      setIsDetailsOpen(false);
-      setDetailsStudent(null);
+  const handleConfirmDelete = async () => {
+    if (!studentToDelete) return;
+    const targetId = studentToDelete.id;
+    const res = await deleteStudentService(targetId);
+    if (res.error) {
+      showToast(res.error, 'error');
+    } else {
+      setStudents((prev) => prev.filter((s) => s.id !== targetId));
+      if (detailsStudent && detailsStudent.id === targetId) {
+        setIsDetailsOpen(false);
+        setDetailsStudent(null);
+      }
+      showToast('Student deleted successfully.', 'success');
     }
     setIsDeleteOpen(false);
-    setDeleteStudent(null);
-    showToast(`Removed student record for ${name}.`, 'info');
+    setStudentToDelete(null);
   };
 
-  // Multi-format Student Export System (CSV, PDF, Word .DOCX)
+  // Destructive Clean Reset: Delete all students from Supabase (Section 2)
+  const handleDeleteAllStudents = async () => {
+    const res = await deleteAllStudentsService();
+    if (res.error) {
+      showToast(res.error, 'error');
+    } else {
+      setStudents([]);
+      if (detailsStudent) {
+        setIsDetailsOpen(false);
+        setDetailsStudent(null);
+      }
+      handleResetFilters();
+      showToast('All student records deleted successfully.', 'success');
+    }
+  };
+
+  // Reload / Sync with Supabase
+  const handleReloadFromSupabase = async () => {
+    await loadStudents();
+    showToast('Student records synchronized from Supabase.', 'info');
+  };
+
+  // Multi-format Student Export System (CSV, PDF, Word .DOCX - Sections 11, 12, 13, 14)
   const handleExport = async (format: 'csv' | 'pdf' | 'docx') => {
-    // Determine exact number of matching students before exporting
     const matchingCount = filteredStudents.length;
     if (matchingCount === 0) {
       showToast('No students found to export.', 'error');
@@ -216,7 +281,6 @@ export default function App() {
     setExportingFormat(format);
 
     try {
-      // Brief pause to allow the UI and toast to render
       await new Promise((resolve) => setTimeout(resolve, 80));
 
       let result;
@@ -229,7 +293,6 @@ export default function App() {
       }
 
       if (result.success) {
-        // Build descriptive confirmation e.g. "Successfully exported 24 BSIT 3rd Year Section 3B students to PDF."
         const descParts: string[] = [];
         if (filters.course !== 'All') descParts.push(filters.course);
         if (filters.year !== 'All') descParts.push(filters.year);
@@ -243,11 +306,11 @@ export default function App() {
           'success'
         );
       } else {
-        showToast(result.error || 'Unable to export student records. Please try again.', 'error');
+        showToast('Unable to export student records.', 'error');
       }
     } catch (err) {
       console.error('Export failed:', err);
-      showToast('Unable to export student records. Please try again.', 'error');
+      showToast('Unable to export student records.', 'error');
     } finally {
       setExportingFormat(null);
     }
@@ -281,15 +344,9 @@ export default function App() {
     showToast('Signed out successfully. Session restarted for demonstration.', 'info');
   };
 
-  const handleResetToDefaults = () => {
-    setStudents(INITIAL_STUDENTS);
-    handleResetFilters();
-    showToast('Reset database to official default student roster.', 'info');
-  };
-
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex">
-      {/* Left Sidebar (Section 4) */}
+      {/* Left Sidebar */}
       <Sidebar
         currentNav={currentNav}
         onNavigate={(nav) => setCurrentNav(nav)}
@@ -365,7 +422,8 @@ export default function App() {
           {currentNav === 'settings' && (
             <SettingsView
               students={students}
-              onResetToDefaults={handleResetToDefaults}
+              onDeleteAllStudents={handleDeleteAllStudents}
+              onReloadFromSupabase={handleReloadFromSupabase}
               onShowToast={showToast}
             />
           )}
@@ -373,7 +431,7 @@ export default function App() {
           {/* VIEW: STUDENTS or DASHBOARD */}
           {(currentNav === 'students' || currentNav === 'dashboard') && (
             <>
-              {/* 1. Statistics Cards Feature (from image: TOTAL STUDENTS 34, 1ST YEAR 8, 2ND YEAR 10, 3RD YEAR 10, 4TH YEAR 6) */}
+              {/* 1. Statistics Cards Feature */}
               <StatsCards
                 totalStudents={students.length}
                 firstYearCount={firstYearCount}
@@ -384,14 +442,14 @@ export default function App() {
                 onSelectYear={(year: YearLevel | 'All') => handleFilterChange({ year })}
               />
 
-              {/* 2. Recent Students Feature (from image: Dolly Fernandez, Dennis Dizon, Francis Zamora, Ella Yap) */}
+              {/* 2. Recent Students Feature */}
               <RecentStudents
                 students={students}
                 onViewStudent={handleOpenViewDetails}
                 onViewAll={handleViewAllStudents}
               />
 
-              {/* 3. Search Students & Filter Panel (Section 7 to 13) */}
+              {/* 3. Search Students & Filter Panel (Sections 9 & 10) */}
               <SearchFilterPanel
                 filters={filters}
                 onFilterChange={handleFilterChange}
@@ -400,14 +458,16 @@ export default function App() {
                 totalResultsCount={filteredStudents.length}
               />
 
-              {/* 4. Student Records Table (Section 14 to 17 & 22) */}
+              {/* 4. Student Records Table (Sections 4, 7, 8, 11, 12, 13, 15) */}
               <div id="student-table-section">
                 <StudentTable
                   students={filteredStudents}
+                  totalDatabaseCount={students.length}
                   onViewStudent={handleOpenViewDetails}
                   onEditStudent={handleOpenEditModal}
                   onDeleteStudent={handleOpenDeleteConfirm}
                   onClearFilters={handleResetFilters}
+                  onAddStudent={handleOpenAddModal}
                   onExport={handleExport}
                   onExportCSV={handleExportCSV}
                   isExporting={exportingFormat}
@@ -418,7 +478,7 @@ export default function App() {
         </main>
       </div>
 
-      {/* Right-Side Student Details Drawer / Panel (Section 18) */}
+      {/* Right-Side Student Details Drawer / Panel (Section 8) */}
       <StudentDetailsModal
         student={detailsStudent}
         isOpen={isDetailsOpen}
@@ -432,7 +492,7 @@ export default function App() {
         }}
       />
 
-      {/* Add / Edit Student Form Modal with Section Dropdown (BSIT 1A, 1B, 1C) */}
+      {/* Add / Edit Student Form Modal (Sections 5 & 6) */}
       <StudentFormModal
         isOpen={isFormOpen}
         onClose={() => {
@@ -443,15 +503,15 @@ export default function App() {
         initialData={formStudent}
       />
 
-      {/* Delete Confirmation Modal (Section 20 & 21) */}
+      {/* Delete Confirmation Modal (Section 7) */}
       <DeleteConfirmModal
-        student={deleteStudent}
+        student={studentToDelete}
         isOpen={isDeleteOpen}
         onClose={() => {
           setIsDeleteOpen(false);
-          setDeleteStudent(null);
+          setStudentToDelete(null);
         }}
-        onConfirm={handleConfirmDelete}
+        onConfirmDelete={handleConfirmDelete}
       />
 
       {/* Logout Confirmation Modal */}

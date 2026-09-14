@@ -87,8 +87,23 @@ export const RecentStudents: React.FC<RecentStudentsProps> = ({
         </button>
       </div>
 
-      {/* 4 Vibrant Student Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+      {/* 4 Vibrant Student Cards Grid or Empty State */}
+      {displayStudents.length === 0 ? (
+        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm shadow-2xs">
+              0
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">No Recent Students</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Newly registered BSIT and DIT students will appear here as quick profile cards.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {displayStudents.map((student, index) => {
           const theme = cardThemes[index % cardThemes.length];
           const initials = getInitials(student);
@@ -154,6 +169,7 @@ export const RecentStudents: React.FC<RecentStudentsProps> = ({
           );
         })}
       </div>
+      )}
     </section>
   );
 };

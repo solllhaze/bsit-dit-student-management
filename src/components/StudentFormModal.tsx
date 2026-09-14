@@ -6,7 +6,9 @@ import {
   AlertCircle,
   GraduationCap,
   Layers,
-  Check
+  Check,
+  Mail,
+  Phone
 } from 'lucide-react';
 import { Student, DegreeProgram, YearLevel, StudentStatus } from '../types';
 import { ALL_BSIT_SECTIONS, ALL_DIT_SECTIONS } from '../data/mockStudents';
@@ -34,6 +36,8 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
   const [yearLevel, setYearLevel] = useState<YearLevel>('1st Year');
   const [section, setSection] = useState('BSIT 1A');
   const [status, setStatus] = useState<StudentStatus>('Regular');
+  const [email, setEmail] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
 
   const [errors, setErrors] = useState<{
     firstName?: string;
@@ -52,6 +56,8 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
       setYearLevel(initialData.yearLevel);
       setSection(initialData.section);
       setStatus(initialData.status);
+      setEmail(initialData.email || '');
+      setContactNumber(initialData.contactNumber || '');
     } else {
       // Default initial state for Add Student (default to BSIT 1A)
       setFirstName('');
@@ -62,6 +68,8 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
       setYearLevel('1st Year');
       setSection('BSIT 1A');
       setStatus('Regular');
+      setEmail('');
+      setContactNumber('');
     }
     setErrors({});
   }, [initialData, isOpen]);
@@ -154,6 +162,8 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
         yearLevel,
         section: section.trim(),
         status,
+        email: email.trim() || undefined,
+        contactNumber: contactNumber.trim() || undefined,
       },
       initialData?.id
     );
@@ -466,6 +476,47 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
                 <option value="On Leave">On Leave</option>
                 <option value="Graduated">Graduated</option>
               </select>
+            </div>
+          </div>
+
+          {/* Contact Information (Optional) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+            <div>
+              <label
+                htmlFor="field-email"
+                className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5"
+              >
+                <Mail className="w-3.5 h-3.5 text-slate-400" />
+                <span>Email Address</span>
+                <span className="text-slate-400 font-normal text-[10px] lowercase">(optional)</span>
+              </label>
+              <input
+                type="email"
+                id="field-email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g. hazel.cabanting@student.college.edu"
+                className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="field-contact-number"
+                className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5"
+              >
+                <Phone className="w-3.5 h-3.5 text-slate-400" />
+                <span>Contact Number</span>
+                <span className="text-slate-400 font-normal text-[10px] lowercase">(optional)</span>
+              </label>
+              <input
+                type="tel"
+                id="field-contact-number"
+                value={contactNumber}
+                onChange={(e) => setContactNumber(e.target.value)}
+                placeholder="e.g. 0917-123-4567"
+                className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+              />
             </div>
           </div>
 
