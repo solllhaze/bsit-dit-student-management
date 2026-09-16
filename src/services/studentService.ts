@@ -94,7 +94,7 @@ export async function fetchLookupData(force = false): Promise<{
 
       if (!progRes.error && progRes.data) cachedPrograms = progRes.data as ProgramRow[];
       if (!yearRes.error && yearRes.data) cachedYearLevels = yearRes.data as YearLevelRow[];
-      if (!secRes.error && secRes.data) cachedSections = secRes.data as SectionRow[];
+      if (!secRes.error && secRes.data) cachedSections = secRes.data as unknown as SectionRow[];
 
       // Only mark as loaded if we successfully loaded sections
       if (!progRes.error && !yearRes.error && !secRes.error && cachedSections.length > 0) {
@@ -265,7 +265,7 @@ export async function fetchStudents(): Promise<{
       };
     }
 
-    const students = (data as StudentRow[]).map(mapRowToStudent);
+    const students = (data as unknown as StudentRow[]).map(mapRowToStudent);
     return { data: students, error: null };
   } catch (err: any) {
     console.error('fetchStudents exception:', err);
@@ -339,7 +339,7 @@ export async function addStudent(
       return { data: null, error: 'Unable to add student.' };
     }
 
-    return { data: mapRowToStudent(data as StudentRow), error: null };
+    return { data: mapRowToStudent(data as unknown as StudentRow), error: null };
   } catch (err: any) {
     console.error('addStudent exception:', err);
     return { data: null, error: 'Unable to add student.' };
@@ -405,7 +405,7 @@ export async function updateStudent(
       return { data: null, error: 'Unable to update student.' };
     }
 
-    return { data: mapRowToStudent(data as StudentRow), error: null };
+    return { data: mapRowToStudent(data as unknown as StudentRow), error: null };
   } catch (err: any) {
     console.error('updateStudent exception:', err);
     return { data: null, error: 'Unable to update student.' };

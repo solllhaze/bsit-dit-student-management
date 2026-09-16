@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   X,
   UserPlus,
@@ -8,7 +8,8 @@ import {
   Layers,
   Check,
   Mail,
-  Phone
+  Phone,
+  Loader2
 } from 'lucide-react';
 import { Student, DegreeProgram, YearLevel, StudentStatus } from '../types';
 import { ALL_BSIT_SECTIONS, ALL_DIT_SECTIONS } from '../data/mockStudents';
@@ -16,7 +17,7 @@ import { ALL_BSIT_SECTIONS, ALL_DIT_SECTIONS } from '../data/mockStudents';
 interface StudentFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (studentData: Omit<Student, 'id'>, existingId?: string) => void;
+  onSave: (studentData: Omit<Student, 'id'>, existingId?: string) => Promise<void> | void;
   initialData?: Student | null;
 }
 
@@ -38,6 +39,7 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
   const [status, setStatus] = useState<StudentStatus>('Regular');
   const [email, setEmail] = useState('');
   const [contactNumber, setContactNumber] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [errors, setErrors] = useState<{
     firstName?: string;
@@ -144,9 +146,16 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  const currentProgramSections = course === 'BSIT' ? ALL_BSIT_SECTIONS : ALL_DIT_SECTIONS;
+  const otherProgramSections = course === 'BSIT' ? ALL_DIT_SECTIONS : ALL_BSIT_SECTIONS;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Compute detected sections for the currently selected Course and Year Level
+  const yrNum = (yearLevel || '1').charAt(0);
+  const detectedSections = useMemo(() => {
+    return currentProgramSections.filter((s) => s.includes(` ${yrNum}`));
+  }, [currentProgramSections, yrNum]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const newErrors: {
@@ -174,33 +183,33 @@ export const StudentFormModal: React.FC<StudentFormModalProps> = ({
       return;
     }
 
-    onSave(
-      {
-        firstName: firstName.trim(),
-        middleName: middleName.trim() || undefined,
-        lastName: lastName.trim(),
-        studentId: studentId.trim(),
-        course,
-        yearLevel,
-        section: section.trim(),
-        status,
-        email: email.trim() || undefined,
-        contactNumber: contactNumber.trim() || undefined,
-      },
-      initialData?.id
-    );
-
-    onClose();
+    setIsSubmitting(true);
+    try {
+      await onSave(
+        {
+          firstName: firstName.trim(),
+          middleName: middleName.trim() || undefined,
+          lastName: lastName.trim(),
+          studentId: studentId.trim(),
+          course,
+          yearLevel,
+          section: section.trim(),
+          status,
+          email: email.trim() || undefined,
+          contactNumber: contactNumber.trim() || undefined,
+        },
+        initialData?.id
+      );
+      // Only close after save successfully completes
+      onClose();
+    } catch (err) {
+      console.error('Save student error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const currentProgramSections = course === 'BSIT' ? ALL_BSIT_SECTIONS : ALL_DIT_SECTIONS;
-  const otherProgramSections = course === 'BSIT' ? ALL_DIT_SECTIONS : ALL_BSIT_SECTIONS;
-
-  // Compute detected sections for the currently selected Course and Year Level
-  const yrNum = yearLevel.charAt(0);
-  const detectedSections = useMemo(() => {
-    return currentProgramSections.filter((s) => s.includes(` ${yrNum}`));
-  }, [currentProgramSections, yrNum]);
+  if (!isOpen) return null;
 
   return (
     <div
