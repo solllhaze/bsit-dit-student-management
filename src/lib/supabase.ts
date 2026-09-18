@@ -2,6 +2,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { resetLookupCache } from '../services/studentService';
 
 export const DEFAULT_SUPABASE_URL = 'https://ppynzitnihxmdgeqsrjd.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_mMzDQDpk__La5H_pA4iS-A_gF5SoRtH';
 
 const STORAGE_KEY_ANON = 'sits_supabase_anon_key';
 const STORAGE_KEY_URL = 'sits_supabase_project_url';
@@ -24,7 +25,7 @@ export function getSupabaseUrl(): string {
 }
 
 /**
- * Retrieve the active Supabase Anon Key (from Vite env or localStorage)
+ * Retrieve the active Supabase Anon Key (from Vite env or localStorage or default)
  */
 export function getSupabaseAnonKey(): string {
   if (typeof window !== 'undefined') {
@@ -37,7 +38,7 @@ export function getSupabaseAnonKey(): string {
   if (envKey && envKey.trim()) {
     return envKey.trim();
   }
-  return '';
+  return DEFAULT_SUPABASE_ANON_KEY;
 }
 
 /**
