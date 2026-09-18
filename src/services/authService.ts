@@ -117,7 +117,8 @@ export function logoutAdmin(): void {
 // ──────────────────────────────────────────────
 
 interface AdminProfileRow {
-  id: string;
+  id?: string;
+  user_id?: string;
   username: string;
   email?: string | null;
   password_hash?: string | null;
@@ -132,7 +133,7 @@ interface AdminProfileRow {
 
 function rowToAdminUser(row: AdminProfileRow): AdminUser {
   return {
-    id: row.id,
+    id: row.id || row.user_id || '00000000-0000-0000-0000-000000000001',
     username: row.username,
     email: row.email ?? undefined,
     fullName: row.full_name || row.name || row.username || 'System Administrator',
@@ -163,7 +164,7 @@ export async function loginAdmin(credentials: LoginCredentials): Promise<AuthRes
   const cleanUser = username.trim().toLowerCase();
   const client = getSupabaseClient();
 
-  // 1. SUPABASE AUTH (auth.users)
+  // 1. SUPABASE AUTH (auth.users + admin_profiles)
   if (client) {
     const candidates = cleanUser.includes('@')
       ? [cleanUser]
@@ -178,49 +179,54 @@ export async function loginAdmin(credentials: LoginCredentials): Promise<AuthRes
           });
 
           if (!authError && authData?.user) {
+            // Retrieve profile from admin_profiles if available
+            let profileData: Record<string, unknown> | null = null;
+            try {
+              const { data: profile } = await client
+                .from('admin_profiles')
+                .select('*')
+                .eq('user_id', authData.user.id)
+                .maybeSingle();
+              profileData = profile;
+            } catch {
+              // Ignore profile lookup error
+            }
+
             const user: AdminUser = {
               id: authData.user.id,
-              username: authData.user.email?.split('@')[0] || cleanUser,
+              username:
+                (profileData?.username as string) || authData.user.email?.split('@')[0] || cleanUser,
               email: authData.user.email || undefined,
               fullName:
+                (profileData?.full_name as string) ||
                 authData.user.user_metadata?.full_name ||
-                authData.user.user_metadata?.name ||
                 authData.user.email ||
                 'System Administrator',
-              role: authData.user.user_metadata?.role || 'Super Admin',
-              isActive: true,
+              role:
+                (profileData?.role as string) || authData.user.user_metadata?.role || 'Super Admin',
+              isActive: profileData?.is_active !== false,
               lastLogin: authData.user.last_sign_in_at || new Date().toISOString(),
-              createdAt: authData.user.created_at,
+              createdAt: (profileData?.created_at as string) || authData.user.created_at,
             };
 
             storeSession(user, rememberMe);
             return { success: true, user };
           }
         } catch {
-          // Continue to database checks
+          // Continue to database table checks
         }
       }
     }
   }
 
-  // 2. SUPABASE DATABASE TABLE (admin_profiles / admin_users)
+  // 2. SUPABASE DATABASE TABLE (admin_users)
   if (client) {
     try {
-      let queryResult = await client
-        .from('admin_profiles')
+      const { data, error } = await client
+        .from('admin_users')
         .select('*')
         .or(`username.eq.${cleanUser},email.eq.${cleanUser}`)
         .maybeSingle();
-
-      if (queryResult.error && (queryResult.error.code === '42P01' || queryResult.error.code === 'PGRST205')) {
-        queryResult = await client
-          .from('admin_users')
-          .select('*')
-          .or(`username.eq.${cleanUser},email.eq.${cleanUser}`)
-          .maybeSingle();
-      }
-
-      const { data, error } = queryResult;
 
       if (!error && data) {
         const row = data as AdminProfileRow;
@@ -234,9 +240,9 @@ export async function loginAdmin(credentials: LoginCredentials): Promise<AuthRes
           if (isMatch) {
             try {
               await client
-                .from('admin_profiles')
+                .from('admin_users')
                 .update({ last_login: new Date().toISOString(), updated_at: new Date().toISOString() })
-                .eq('id', row.id);
+                .eq('id', row.id || row.user_id);
             } catch {
               // Non-fatal
             }
