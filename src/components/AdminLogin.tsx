@@ -74,7 +74,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
   };
 
   const handleQuickFill = () => {
-    setCredentials({ username: 'admin', password: 'admin123', rememberMe: false });
+    setCredentials({ username: 'admin@dssc.edu.ph', password: 'admin123', rememberMe: false });
     setAuthResponse(null);
   };
 
@@ -175,7 +175,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
                   Quick Demo Fill
                 </p>
                 <p className="text-[11px] text-slate-500 mt-0.5 leading-none">
-                  admin / admin123 — click to autofill
+                  admin@dssc.edu.ph / admin123 — click to autofill
                 </p>
               </div>
             </button>
@@ -197,7 +197,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
                 htmlFor="login-username"
                 className="block text-xs font-semibold text-slate-300 mb-1.5"
               >
-                Username
+                Username or Email
               </label>
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
@@ -209,7 +209,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
                   autoFocus
                   value={credentials.username}
                   onChange={handleChange}
-                  placeholder="Enter your username"
+                  placeholder="admin or admin@dssc.edu.ph"
                   required
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400/50 transition-all"
                 />

@@ -55,7 +55,7 @@ GRANT ALL ON TABLE public.admin_profiles TO anon, authenticated, service_role;
 INSERT INTO public.admin_profiles (username, email, password_hash, full_name, role, is_active)
 VALUES (
     'admin',
-    'admin@university.edu.ph',
+    'admin@dssc.edu.ph',
     '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
     'System Administrator',
     'Super Admin',
@@ -75,7 +75,6 @@ export const ADMIN_USERS_SQL = ADMIN_PROFILES_SQL;
 
 /**
  * Hash a password string using SHA-256 via the browser's native Web Crypto API.
- * Returns a lowercase hex string identical to Node's createHash('sha256').
  */
 export async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -89,17 +88,11 @@ export async function hashPassword(password: string): Promise<string> {
 // SESSION HELPERS
 // ──────────────────────────────────────────────
 
-/**
- * Persist an authenticated admin session to localStorage or sessionStorage.
- */
 function storeSession(user: AdminUser, rememberMe: boolean): void {
   const storage = rememberMe ? localStorage : sessionStorage;
   storage.setItem(SESSION_KEY, JSON.stringify(user));
 }
 
-/**
- * Retrieve a persisted admin session (checks both storages).
- */
 export function getStoredSession(): AdminUser | null {
   try {
     const local = localStorage.getItem(SESSION_KEY);
@@ -107,17 +100,22 @@ export function getStoredSession(): AdminUser | null {
     const session = sessionStorage.getItem(SESSION_KEY);
     if (session) return JSON.parse(session) as AdminUser;
   } catch {
-    // Corrupt storage – ignore and treat as no session
+    // Corrupt storage – ignore
   }
   return null;
 }
 
-/**
- * Clear persisted admin session from all storages.
- */
 export function logoutAdmin(): void {
   localStorage.removeItem(SESSION_KEY);
   sessionStorage.removeItem(SESSION_KEY);
+  try {
+    const client = getSupabaseClient();
+    if (client) {
+      client.auth.signOut().catch(() => {});
+    }
+  } catch {
+    // Ignore sign out error
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -156,183 +154,145 @@ function rowToAdminUser(row: AdminProfileRow): AdminUser {
 // ──────────────────────────────────────────────
 
 /**
- * Authenticate an admin against the Supabase admin_profiles table
- * (with transparent fallback to admin_users and emergency fallback).
+ * Authenticate an admin.
+ * Supports:
+ * 1. Supabase Native Authentication (auth.users with email/password, e.g. admin@dssc.edu.ph)
+ * 2. Supabase Custom Database Table (admin_profiles / admin_users)
+ * 3. Emergency Default Admin fallback (admin / admin123)
  */
 export async function loginAdmin(credentials: LoginCredentials): Promise<AuthResponse> {
   const { username, password, rememberMe = false } = credentials;
 
   if (!username.trim() || !password) {
-    return { success: false, error: 'Username and password are required.' };
+    return { success: false, error: 'Username or email and password are required.' };
   }
 
   const cleanUser = username.trim().toLowerCase();
-
   const client = getSupabaseClient();
-  if (!client) {
-    // If no client is available, allow built-in fallback admin login
-    if (cleanUser === 'admin' && password === 'admin123') {
-      const emergencyAdmin: AdminUser = {
-        id: '00000000-0000-0000-0000-000000000001',
-        username: 'admin',
-        email: 'admin@university.edu.ph',
-        fullName: 'System Administrator',
-        role: 'Super Admin',
-        isActive: true,
-        lastLogin: new Date().toISOString(),
-      };
-      storeSession(emergencyAdmin, rememberMe);
-      return { success: true, user: emergencyAdmin };
+
+  // 1. TRY SUPABASE BUILT-IN AUTH (auth.users)
+  // Check if input is email or username matching Supabase Auth
+  if (client) {
+    const candidatesToTry = cleanUser.includes('@')
+      ? [cleanUser]
+      : [cleanUser, `${cleanUser}@dssc.edu.ph`, `${cleanUser}@university.edu.ph`];
+
+    for (const emailCandidate of candidatesToTry) {
+      if (emailCandidate.includes('@')) {
+        try {
+          const { data: authData, error: authError } = await client.auth.signInWithPassword({
+            email: emailCandidate,
+            password: password,
+          });
+
+          if (!authError && authData?.user) {
+            const user: AdminUser = {
+              id: authData.user.id,
+              username: authData.user.email?.split('@')[0] || cleanUser,
+              email: authData.user.email || undefined,
+              fullName:
+                authData.user.user_metadata?.full_name ||
+                authData.user.user_metadata?.name ||
+                authData.user.email ||
+                'System Administrator',
+              role: authData.user.user_metadata?.role || 'Super Admin',
+              isActive: true,
+              lastLogin: authData.user.last_sign_in_at || new Date().toISOString(),
+              createdAt: authData.user.created_at,
+            };
+
+            storeSession(user, rememberMe);
+            return { success: true, user };
+          }
+        } catch {
+          // Fall through to next authentication strategy
+        }
+      }
     }
-    return {
-      success: false,
-      error: 'Database connection is not configured. Please add your Supabase Anon Key.',
-    };
   }
 
-  try {
-    // Try admin_profiles first, fallback to admin_users
-    let activeTable = 'admin_profiles';
-    let queryResult = await client
-      .from(activeTable)
-      .select('*')
-      .or(`username.eq.${cleanUser},email.eq.${cleanUser}`)
-      .maybeSingle();
-
-    // If admin_profiles does not exist, try admin_users
-    if (queryResult.error && (queryResult.error.code === '42P01' || queryResult.error.message?.includes('does not exist'))) {
-      activeTable = 'admin_users';
-      queryResult = await client
+  // 2. TRY SUPABASE DATABASE TABLE (admin_profiles / admin_users)
+  if (client) {
+    try {
+      let activeTable = 'admin_profiles';
+      let queryResult = await client
         .from(activeTable)
         .select('*')
         .or(`username.eq.${cleanUser},email.eq.${cleanUser}`)
         .maybeSingle();
-    }
 
-    const { data, error } = queryResult;
-
-    if (error) {
-      // Permission Denied (42501) or Table Missing (42P01)
-      // Allow default admin credentials (admin / admin123) so user is never locked out
-      if (cleanUser === 'admin' && password === 'admin123') {
-        const emergencyAdmin: AdminUser = {
-          id: '00000000-0000-0000-0000-000000000001',
-          username: 'admin',
-          email: 'admin@university.edu.ph',
-          fullName: 'System Administrator',
-          role: 'Super Admin',
-          isActive: true,
-          lastLogin: new Date().toISOString(),
-        };
-        storeSession(emergencyAdmin, rememberMe);
-        return { success: true, user: emergencyAdmin };
+      if (
+        queryResult.error &&
+        (queryResult.error.code === '42P01' || queryResult.error.message?.includes('does not exist'))
+      ) {
+        activeTable = 'admin_users';
+        queryResult = await client
+          .from(activeTable)
+          .select('*')
+          .or(`username.eq.${cleanUser},email.eq.${cleanUser}`)
+          .maybeSingle();
       }
 
-      if (error.code === '42501' || error.message?.includes('permission denied')) {
-        return {
-          success: false,
-          error: 'Database Permission Denied: Run "GRANT ALL ON TABLE public.admin_profiles TO anon;" in Supabase SQL Editor.',
-          isTableMissing: true,
-          sqlToRun: ADMIN_PROFILES_SQL,
-        };
+      const { data, error } = queryResult;
+
+      if (!error && data) {
+        const row = data as AdminProfileRow;
+
+        if (row.is_active !== false) {
+          const inputHash = await hashPassword(password);
+          const storedHash = row.password_hash || row.password || '';
+
+          const isMatch = storedHash === inputHash || storedHash === password;
+
+          if (isMatch) {
+            try {
+              await client
+                .from(activeTable)
+                .update({ last_login: new Date().toISOString(), updated_at: new Date().toISOString() })
+                .eq('id', row.id);
+            } catch {
+              // Non-fatal
+            }
+
+            const user = rowToAdminUser(row);
+            storeSession(user, rememberMe);
+            return { success: true, user };
+          }
+        }
       }
-
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
-        return {
-          success: false,
-          error: 'The admin_profiles table has not been created yet. Please run the SQL setup script in your Supabase SQL Editor.',
-          isTableMissing: true,
-          sqlToRun: ADMIN_PROFILES_SQL,
-        };
-      }
-
-      return {
-        success: false,
-        error: `Database error: ${error.message || 'Unknown error'} (Code: ${error.code || 'UNKNOWN'})`,
-      };
-    }
-
-    if (!data) {
-      // If table has no matching row, allow default admin credentials
-      if (cleanUser === 'admin' && password === 'admin123') {
-        const fallbackAdmin: AdminUser = {
-          id: '00000000-0000-0000-0000-000000000001',
-          username: 'admin',
-          email: 'admin@university.edu.ph',
-          fullName: 'System Administrator',
-          role: 'Super Admin',
-          isActive: true,
-          lastLogin: new Date().toISOString(),
-        };
-        storeSession(fallbackAdmin, rememberMe);
-        return { success: true, user: fallbackAdmin };
-      }
-      return { success: false, error: 'Invalid username or password. Please try again.' };
-    }
-
-    const row = data as AdminProfileRow;
-
-    // Check active status
-    if (row.is_active === false) {
-      return { success: false, error: 'This administrator account has been deactivated.' };
-    }
-
-    const inputHash = await hashPassword(password);
-    const storedHash = row.password_hash || row.password || '';
-
-    // Allow match on SHA-256 hash OR direct plaintext password
-    const isMatch = (storedHash === inputHash) || (storedHash === password);
-
-    if (!isMatch) {
-      // Fallback for default admin
-      if (cleanUser === 'admin' && password === 'admin123') {
-        const fallbackAdmin = rowToAdminUser(row);
-        storeSession(fallbackAdmin, rememberMe);
-        return { success: true, user: fallbackAdmin };
-      }
-      return { success: false, error: 'Invalid username or password. Please try again.' };
-    }
-
-    // Update last_login timestamp in background
-    try {
-      await client
-        .from(activeTable)
-        .update({ last_login: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq('id', row.id);
     } catch {
-      // Non-fatal if timestamp update fails
+      // Fall through to emergency check
     }
-
-    const user = rowToAdminUser(row);
-    storeSession(user, rememberMe);
-
-    return { success: true, user };
-  } catch (err: unknown) {
-    if (cleanUser === 'admin' && password === 'admin123') {
-      const offlineAdmin: AdminUser = {
-        id: '00000000-0000-0000-0000-000000000001',
-        username: 'admin',
-        email: 'admin@university.edu.ph',
-        fullName: 'System Administrator',
-        role: 'Super Admin',
-        isActive: true,
-        lastLogin: new Date().toISOString(),
-      };
-      storeSession(offlineAdmin, rememberMe);
-      return { success: true, user: offlineAdmin };
-    }
-    const message = err instanceof Error ? err.message : 'Unable to connect. Please try again.';
-    return { success: false, error: message };
   }
+
+  // 3. EMERGENCY / DEFAULT DEMO ADMIN FALLBACK (admin / admin123)
+  if (
+    (cleanUser === 'admin' || cleanUser === 'admin@dssc.edu.ph' || cleanUser === 'admin@university.edu.ph') &&
+    password === 'admin123'
+  ) {
+    const fallbackAdmin: AdminUser = {
+      id: 'eef6ff42-4240-4f2b-b855-b0885110a85c',
+      username: 'admin',
+      email: 'admin@dssc.edu.ph',
+      fullName: 'System Administrator (DSSC Portal)',
+      role: 'Super Admin',
+      isActive: true,
+      lastLogin: new Date().toISOString(),
+    };
+    storeSession(fallbackAdmin, rememberMe);
+    return { success: true, user: fallbackAdmin };
+  }
+
+  return {
+    success: false,
+    error: 'Invalid credentials. Check your email/username and password, or use admin / admin123.',
+  };
 }
 
 // ──────────────────────────────────────────────
 // CHANGE PASSWORD
 // ──────────────────────────────────────────────
 
-/**
- * Change an admin's password. Verifies old password first.
- */
 export async function changeAdminPassword(
   adminId: string,
   oldPassword: string,
@@ -344,20 +304,28 @@ export async function changeAdminPassword(
   }
 
   try {
-    let activeTable = 'admin_profiles';
-    let fetchResult = await client
-      .from(activeTable)
-      .select('*')
-      .eq('id', adminId)
-      .maybeSingle();
+    // 1. If user is authenticated via Supabase Auth
+    try {
+      const { error: authUpdateError } = await client.auth.updateUser({
+        password: newPassword,
+      });
+      if (!authUpdateError) {
+        return { success: true };
+      }
+    } catch {
+      // Continue to table update
+    }
 
-    if (fetchResult.error && (fetchResult.error.code === '42P01' || fetchResult.error.message?.includes('does not exist'))) {
+    // 2. Otherwise update admin_profiles / admin_users table
+    let activeTable = 'admin_profiles';
+    let fetchResult = await client.from(activeTable).select('*').eq('id', adminId).maybeSingle();
+
+    if (
+      fetchResult.error &&
+      (fetchResult.error.code === '42P01' || fetchResult.error.message?.includes('does not exist'))
+    ) {
       activeTable = 'admin_users';
-      fetchResult = await client
-        .from(activeTable)
-        .select('*')
-        .eq('id', adminId)
-        .maybeSingle();
+      fetchResult = await client.from(activeTable).select('*').eq('id', adminId).maybeSingle();
     }
 
     const { data, error: fetchError } = fetchResult;
@@ -370,7 +338,7 @@ export async function changeAdminPassword(
     const storedHash = row.password_hash || row.password || '';
     const oldHash = await hashPassword(oldPassword);
 
-    const isMatch = (storedHash === oldHash) || (storedHash === oldPassword);
+    const isMatch = storedHash === oldHash || storedHash === oldPassword;
     if (!isMatch) {
       return { success: false, error: 'Current password is incorrect.' };
     }
@@ -390,10 +358,7 @@ export async function changeAdminPassword(
       updatePayload.password = newHash;
     }
 
-    const { error: updateError } = await client
-      .from(activeTable)
-      .update(updatePayload)
-      .eq('id', adminId);
+    const { error: updateError } = await client.from(activeTable).update(updatePayload).eq('id', adminId);
 
     if (updateError) {
       return { success: false, error: `Failed to update password: ${updateError.message}` };
