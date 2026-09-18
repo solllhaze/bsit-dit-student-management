@@ -74,7 +74,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
   };
 
   const handleQuickFill = () => {
-    setCredentials({ username: 'admin@dssc.edu.ph', password: 'admin123', rememberMe: false });
+    setCredentials({ username: 'admin@dssc.edu.ph', password: 'bsitdit_2026', rememberMe: false });
     setAuthResponse(null);
   };
 
@@ -175,7 +175,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
                   Quick Demo Fill
                 </p>
                 <p className="text-[11px] text-slate-500 mt-0.5 leading-none">
-                  admin@dssc.edu.ph / admin123 — click to autofill
+                  admin@dssc.edu.ph / bsitdit_2026 — click to autofill
                 </p>
               </div>
             </button>
