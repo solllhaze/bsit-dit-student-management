@@ -14,7 +14,8 @@ import { CoursesView } from './components/CoursesView';
 import { SectionsView } from './components/SectionsView';
 import { SettingsView } from './components/SettingsView';
 import { ToastContainer } from './components/Toast';
-import { Student, FilterState, ToastMessage, YearLevel } from './types';
+import { AdminLogin } from './components/AdminLogin';
+import { Student, FilterState, ToastMessage, YearLevel, AdminUser } from './types';
 import { AVAILABLE_SECTIONS, getFullName, formatSectionShort } from './data/mockStudents';
 import {
   exportStudentsToCSV,
@@ -28,8 +29,13 @@ import {
   deleteStudent as deleteStudentService,
   deleteAllStudents as deleteAllStudentsService
 } from './services/studentService';
+import { getStoredSession, logoutAdmin } from './services/authService';
 
 export default function App() {
+  // ── AUTH STATE ──────────────────────────────────────────────────
+  // Restore session from localStorage / sessionStorage on first render
+  const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(() => getStoredSession());
+
   // Navigation State: 'students' | 'dashboard' | 'reports' | 'courses' | 'sections' | 'settings'
   const [currentNav, setCurrentNav] = useState('students');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -340,9 +346,27 @@ export default function App() {
   };
 
   const handleConfirmLogout = () => {
+    logoutAdmin();
+    setCurrentAdmin(null);
     setIsLogoutOpen(false);
-    showToast('Signed out successfully. Session restarted for demonstration.', 'info');
+    showToast('Signed out successfully. Goodbye!', 'info');
   };
+
+  // ── GUARD: Show login if not authenticated ──────────────────────
+  if (!currentAdmin) {
+    return (
+      <>
+        <AdminLogin
+          onLoginSuccess={(user) => {
+            setCurrentAdmin(user);
+            showToast(`Welcome back, ${user.fullName}! Session started.`, 'success');
+          }}
+        />
+        {/* Toast still available on login screen */}
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex">
@@ -354,6 +378,7 @@ export default function App() {
         onLogoutClick={() => setIsLogoutOpen(true)}
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
+        currentAdmin={currentAdmin}
       />
 
       {/* Main Content Area */}
@@ -363,6 +388,7 @@ export default function App() {
           onOpenAddModal={handleOpenAddModal}
           onToggleMobileSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           onOpenSettings={() => setCurrentNav('settings')}
+          currentAdmin={currentAdmin}
         />
 
         {/* Page Main Content */}
@@ -425,6 +451,8 @@ export default function App() {
               onDeleteAllStudents={handleDeleteAllStudents}
               onReloadFromSupabase={handleReloadFromSupabase}
               onShowToast={showToast}
+              currentAdmin={currentAdmin}
+              onLogout={() => setIsLogoutOpen(true)}
             />
           )}
 

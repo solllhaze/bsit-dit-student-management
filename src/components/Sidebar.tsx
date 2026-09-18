@@ -12,6 +12,7 @@ import {
   Sparkles,
   X
 } from 'lucide-react';
+import { AdminUser } from '../types';
 
 interface SidebarProps {
   currentNav: string;
@@ -20,6 +21,7 @@ interface SidebarProps {
   onLogoutClick?: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  currentAdmin?: AdminUser | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -29,7 +31,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogoutClick,
   mobileOpen,
   onCloseMobile,
+  currentAdmin,
 }) => {
+  // Generate initials from admin full name or fallback to 'AD'
+  const adminInitials = currentAdmin
+    ? currentAdmin.fullName
+        .split(' ')
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join('')
+        .toUpperCase()
+    : 'AD';
+  const adminName = currentAdmin?.fullName ?? 'Administrator';
+  const adminRole = currentAdmin?.role ?? 'System Administrator';
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'students', label: 'Students', icon: Users, badge: 'Active' },
@@ -188,14 +202,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 border-t border-slate-200/80 bg-slate-50/60 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-700 to-blue-600 text-white flex items-center justify-center font-bold text-xs ring-2 ring-white shadow-xs shrink-0">
-              AD
+              {adminInitials}
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900 truncate leading-tight">
-                Administrator
+                {adminName}
               </p>
               <p className="text-xs text-slate-500 truncate leading-tight">
-                System Administrator
+                {adminRole}
               </p>
             </div>
           </div>

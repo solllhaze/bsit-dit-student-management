@@ -171,7 +171,57 @@ CREATE POLICY "Allow anon update on students" ON public.students FOR UPDATE TO a
 DROP POLICY IF EXISTS "Allow anon delete on students" ON public.students;
 CREATE POLICY "Allow anon delete on students" ON public.students FOR DELETE TO anon, authenticated USING (true);
 
--- 10. Table Privileges & Schema Grants
+-- ============================================
+-- 10. Create ADMIN USERS table (Authentication)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.admin_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username TEXT NOT NULL UNIQUE,
+    email TEXT UNIQUE,
+    password_hash TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'System Administrator',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    last_login TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_users_username ON public.admin_users(username);
+CREATE INDEX IF NOT EXISTS idx_admin_users_email ON public.admin_users(email);
+
+-- Admin Users RLS Policies
+ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow anon select on admin_users" ON public.admin_users;
+CREATE POLICY "Allow anon select on admin_users" ON public.admin_users FOR SELECT TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow anon insert on admin_users" ON public.admin_users;
+CREATE POLICY "Allow anon insert on admin_users" ON public.admin_users FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon update on admin_users" ON public.admin_users;
+CREATE POLICY "Allow anon update on admin_users" ON public.admin_users FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon delete on admin_users" ON public.admin_users;
+CREATE POLICY "Allow anon delete on admin_users" ON public.admin_users FOR DELETE TO anon, authenticated USING (true);
+
+-- Seed Default Admin Account: admin / admin123
+-- SHA-256 for 'admin123': 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
+INSERT INTO public.admin_users (username, email, password_hash, full_name, role, is_active)
+VALUES (
+    'admin',
+    'admin@university.edu.ph',
+    '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
+    'System Administrator',
+    'Super Admin',
+    true
+)
+ON CONFLICT (username) DO UPDATE 
+SET password_hash = EXCLUDED.password_hash,
+    full_name = EXCLUDED.full_name,
+    role = EXCLUDED.role;
+
+-- 11. Table Privileges & Schema Grants
 -- In PostgreSQL, roles need table-level permissions before RLS policies take effect.
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
@@ -181,3 +231,4 @@ GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role;
+

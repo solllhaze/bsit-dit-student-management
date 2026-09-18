@@ -55,3 +55,29 @@ export interface ToastMessage {
   type: 'success' | 'info' | 'error';
   message: string;
 }
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  email?: string;
+  fullName: string;
+  role: string;
+  isActive: boolean;
+  lastLogin?: string;
+  createdAt?: string;
+}
+
+export interface LoginCredentials {
+  username: string;
+  password: string;
+  rememberMe?: boolean;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  user?: AdminUser;
+  error?: string;
+  isTableMissing?: boolean;
+  sqlToRun?: string;
+}
+

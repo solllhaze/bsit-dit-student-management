@@ -16,9 +16,12 @@ import {
   Eye,
   EyeOff,
   Code,
-  Copy
+  Copy,
+  Lock,
+  UserCheck,
+  LogOut
 } from 'lucide-react';
-import { Student } from '../types';
+import { Student, AdminUser } from '../types';
 import {
   getSupabaseUrl,
   getSupabaseAnonKey,
@@ -26,12 +29,15 @@ import {
   testSupabaseConnection,
   DEFAULT_SUPABASE_URL
 } from '../lib/supabase';
+import { changeAdminPassword, ADMIN_USERS_SQL } from '../services/authService';
 
 interface SettingsViewProps {
   students: Student[];
   onDeleteAllStudents: () => Promise<void>;
   onReloadFromSupabase: () => Promise<void>;
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
+  currentAdmin?: AdminUser | null;
+  onLogout?: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -39,6 +45,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onDeleteAllStudents,
   onReloadFromSupabase,
   onShowToast,
+  currentAdmin,
+  onLogout,
 }) => {
   const [academicYear, setAcademicYear] = useState('2026-2027');
   const [semester, setSemester] = useState('1st Semester');
@@ -66,6 +74,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [showSqlSchema, setShowSqlSchema] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
+
+  // Admin Password Change State
+  const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [pwOld, setPwOld] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [showPwOld, setShowPwOld] = useState(false);
+  const [showPwNew, setShowPwNew] = useState(false);
+  const [isChangingPw, setIsChangingPw] = useState(false);
+  const [copiedAdminSql, setCopiedAdminSql] = useState(false);
 
   useEffect(() => {
     // Initial quick test if key is present
@@ -564,7 +582,194 @@ CREATE POLICY "Allow anon delete on students" ON public.students FOR DELETE TO a
         </div>
       </div>
 
+      {/* ─────────────────────────────────────────────────
+          ADMIN ACCOUNT & DATABASE SECURITY
+         ───────────────────────────────────────────────── */}
+      <div id="admin-security-settings-section" className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+              <UserCheck className="w-5 h-5 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Administrator Account</h3>
+              <p className="text-xs text-slate-500">Manage login credentials and session</p>
+            </div>
+          </div>
+          {currentAdmin && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              Active Session
+            </span>
+          )}
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Current Admin Info */}
+          {currentAdmin ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { label: 'Full Name', value: currentAdmin.fullName },
+                { label: 'Username', value: currentAdmin.username },
+                { label: 'Role', value: currentAdmin.role },
+                { label: 'Email', value: currentAdmin.email ?? '—' },
+                {
+                  label: 'Last Login',
+                  value: currentAdmin.lastLogin
+                    ? new Date(currentAdmin.lastLogin).toLocaleString()
+                    : 'First session',
+                },
+                { label: 'Admin ID', value: currentAdmin.id.slice(0, 8) + '…' },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-xl bg-slate-50 border border-slate-100 px-4 py-3">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{label}</p>
+                  <p className="text-sm font-semibold text-slate-900 mt-0.5 truncate">{value}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 italic">No active admin session found.</p>
+          )}
+
+          {/* Change Password Toggle */}
+          <button
+            type="button"
+            id="toggle-change-password-btn"
+            onClick={() => setShowPasswordSection((v) => !v)}
+            className="flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors cursor-pointer"
+          >
+            <Lock className="w-4 h-4" />
+            {showPasswordSection ? 'Cancel Password Change' : 'Change Administrator Password'}
+          </button>
+
+          {showPasswordSection && currentAdmin && (
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              {/* Old Password */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Current Password</label>
+                <div className="relative">
+                  <input
+                    id="pw-old-input"
+                    type={showPwOld ? 'text' : 'password'}
+                    value={pwOld}
+                    onChange={(e) => setPwOld(e.target.value)}
+                    placeholder="Enter current password"
+                    className="w-full pr-10 pl-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 transition"
+                  />
+                  <button type="button" onClick={() => setShowPwOld((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                    {showPwOld ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              {/* New Password */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">New Password</label>
+                <div className="relative">
+                  <input
+                    id="pw-new-input"
+                    type={showPwNew ? 'text' : 'password'}
+                    value={pwNew}
+                    onChange={(e) => setPwNew(e.target.value)}
+                    placeholder="New password (min 6 chars)"
+                    className="w-full pr-10 pl-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 transition"
+                  />
+                  <button type="button" onClick={() => setShowPwNew((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                    {showPwNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              {/* Confirm Password */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Confirm New Password</label>
+                <input
+                  id="pw-confirm-input"
+                  type="password"
+                  value={pwConfirm}
+                  onChange={(e) => setPwConfirm(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="w-full pl-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 transition"
+                />
+              </div>
+              {/* Save Password Button */}
+              <button
+                id="save-new-password-btn"
+                type="button"
+                disabled={isChangingPw || !pwOld || !pwNew || !pwConfirm}
+                onClick={async () => {
+                  if (pwNew !== pwConfirm) {
+                    onShowToast('New passwords do not match.', 'error');
+                    return;
+                  }
+                  setIsChangingPw(true);
+                  try {
+                    const res = await changeAdminPassword(currentAdmin.id, pwOld, pwNew);
+                    if (res.success) {
+                      onShowToast('Password changed successfully.', 'success');
+                      setPwOld('');
+                      setPwNew('');
+                      setPwConfirm('');
+                      setShowPasswordSection(false);
+                    } else {
+                      onShowToast(res.error ?? 'Failed to change password.', 'error');
+                    }
+                  } finally {
+                    setIsChangingPw(false);
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition cursor-pointer shadow-sm shadow-indigo-600/20"
+              >
+                <Key className="w-4 h-4" />
+                {isChangingPw ? 'Saving…' : 'Update Password'}
+              </button>
+            </div>
+          )}
+
+          {/* Admin SQL Helper */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
+              <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <Code className="w-3.5 h-3.5 text-slate-500" />
+                admin_users Table SQL
+              </span>
+              <button
+                id="copy-admin-sql-btn"
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(ADMIN_USERS_SQL);
+                    setCopiedAdminSql(true);
+                    onShowToast('Admin SQL copied to clipboard!', 'info');
+                    setTimeout(() => setCopiedAdminSql(false), 2500);
+                  } catch { /* ignore */ }
+                }}
+                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer transition-colors"
+              >
+                {copiedAdminSql ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedAdminSql ? 'Copied!' : 'Copy SQL'}
+              </button>
+            </div>
+            <pre className="text-[10px] text-slate-500 p-4 bg-white overflow-x-auto max-h-36 leading-relaxed whitespace-pre-wrap font-mono">
+              {ADMIN_USERS_SQL}
+            </pre>
+          </div>
+
+          {/* Sign Out Button */}
+          {onLogout && (
+            <button
+              id="settings-signout-btn"
+              type="button"
+              onClick={onLogout}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out of Administrator Session
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Confirmation Modal for Resetting Database (Section 2 requirement) */}
+
       {isResetModalOpen && (
         <div
           id="reset-database-modal-overlay"

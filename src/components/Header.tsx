@@ -7,19 +7,34 @@ import {
   Calendar,
   ShieldCheck
 } from 'lucide-react';
+import { AdminUser } from '../types';
 
 interface HeaderProps {
   onOpenAddModal: () => void;
   onToggleMobileSidebar: () => void;
   onOpenSettings?: () => void;
+  currentAdmin?: AdminUser | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenAddModal,
   onToggleMobileSidebar,
   onOpenSettings,
+  currentAdmin,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
+
+  // Derive admin display info
+  const adminInitials = currentAdmin
+    ? currentAdmin.fullName
+        .split(' ')
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join('')
+        .toUpperCase()
+    : 'AD';
+  const adminDisplayName = currentAdmin?.fullName ?? 'Administrator';
+  const adminRole = currentAdmin?.role ?? 'College Admin';
 
   const notifications = [
     {
@@ -165,14 +180,14 @@ export const Header: React.FC<HeaderProps> = ({
             className="hidden sm:flex items-center gap-2.5 pl-2 pr-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl transition-colors cursor-pointer text-left"
           >
             <div className="w-8 h-8 rounded-lg bg-indigo-900 text-indigo-100 font-bold text-xs flex items-center justify-center shadow-xs">
-              AD
+              {adminInitials}
             </div>
             <div className="text-left">
               <p className="text-xs font-semibold text-slate-900 leading-none">
-                Administrator
+                {adminDisplayName}
               </p>
               <p className="text-[10px] text-slate-600 font-medium leading-none mt-1">
-                College Admin
+                {adminRole}
               </p>
             </div>
           </button>
