@@ -219,42 +219,45 @@ export async function loginAdmin(credentials: LoginCredentials): Promise<AuthRes
     }
   }
 
-  // 2. SUPABASE DATABASE TABLE (admin_users)
+  // 2. SUPABASE DATABASE TABLE (admin_profiles or admin_users)
   if (client) {
-    try {
-      const { data, error } = await client
-        .from('admin_users')
-        .select('*')
-        .or(`username.eq.${cleanUser},email.eq.${cleanUser}`)
-        .maybeSingle();
+    const tableCandidates = ['admin_profiles', 'admin_users'];
+    for (const tableName of tableCandidates) {
+      try {
+        const { data, error } = await client
+          .from(tableName)
+          .select('*')
+          .or(`username.eq.${cleanUser},email.eq.${cleanUser}`)
+          .maybeSingle();
 
-      if (!error && data) {
-        const row = data as AdminProfileRow;
+        if (!error && data) {
+          const row = data as AdminProfileRow;
 
-        if (row.is_active !== false) {
-          const inputHash = await hashPassword(password);
-          const storedHash = row.password_hash || row.password || '';
+          if (row.is_active !== false) {
+            const inputHash = await hashPassword(password);
+            const storedHash = row.password_hash || row.password || '';
 
-          const isMatch = storedHash === inputHash || storedHash === password;
+            const isMatch = storedHash === inputHash || storedHash === password;
 
-          if (isMatch) {
-            try {
-              await client
-                .from('admin_users')
-                .update({ last_login: new Date().toISOString(), updated_at: new Date().toISOString() })
-                .eq('id', row.id || row.user_id);
-            } catch {
-              // Non-fatal
+            if (isMatch) {
+              try {
+                await client
+                  .from(tableName)
+                  .update({ last_login: new Date().toISOString(), updated_at: new Date().toISOString() })
+                  .eq('id', row.id || row.user_id);
+              } catch {
+                // Non-fatal
+              }
+
+              const user = rowToAdminUser(row);
+              storeSession(user, rememberMe);
+              return { success: true, user };
             }
-
-            const user = rowToAdminUser(row);
-            storeSession(user, rememberMe);
-            return { success: true, user };
           }
         }
+      } catch {
+        // Continue to next table or verified administrator check
       }
-    } catch {
-      // Continue to verified administrator check
     }
   }
 
