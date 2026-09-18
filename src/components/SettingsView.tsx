@@ -29,7 +29,7 @@ import {
   testSupabaseConnection,
   DEFAULT_SUPABASE_URL
 } from '../lib/supabase';
-import { changeAdminPassword, ADMIN_USERS_SQL } from '../services/authService';
+import { changeAdminPassword, ADMIN_PROFILES_SQL } from '../services/authService';
 
 interface SettingsViewProps {
   students: Student[];
@@ -729,14 +729,14 @@ CREATE POLICY "Allow anon delete on students" ON public.students FOR DELETE TO a
             <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
               <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                 <Code className="w-3.5 h-3.5 text-slate-500" />
-                admin_users Table SQL
+                admin_profiles Table SQL
               </span>
               <button
                 id="copy-admin-sql-btn"
                 type="button"
                 onClick={async () => {
                   try {
-                    await navigator.clipboard.writeText(ADMIN_USERS_SQL);
+                    await navigator.clipboard.writeText(ADMIN_PROFILES_SQL);
                     setCopiedAdminSql(true);
                     onShowToast('Admin SQL copied to clipboard!', 'info');
                     setTimeout(() => setCopiedAdminSql(false), 2500);
@@ -749,7 +749,7 @@ CREATE POLICY "Allow anon delete on students" ON public.students FOR DELETE TO a
               </button>
             </div>
             <pre className="text-[10px] text-slate-500 p-4 bg-white overflow-x-auto max-h-36 leading-relaxed whitespace-pre-wrap font-mono">
-              {ADMIN_USERS_SQL}
+              {ADMIN_PROFILES_SQL}
             </pre>
           </div>
 

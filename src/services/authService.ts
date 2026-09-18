@@ -6,11 +6,11 @@ import { AdminUser, AuthResponse, LoginCredentials } from '../types';
 // ──────────────────────────────────────────────
 const SESSION_KEY = 'sits_admin_session';
 
-// SQL definition for admin_users table (used in UI for copy/paste helper)
-export const ADMIN_USERS_SQL = `-- ============================================
--- ADMIN USERS TABLE - Run in Supabase SQL Editor
+// SQL definition for admin_profiles table (used in UI for copy/paste helper)
+export const ADMIN_PROFILES_SQL = `-- ============================================
+-- ADMIN PROFILES TABLE - Run in Supabase SQL Editor
 -- ============================================
-CREATE TABLE IF NOT EXISTS public.admin_users (
+CREATE TABLE IF NOT EXISTS public.admin_profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username TEXT NOT NULL UNIQUE,
     email TEXT UNIQUE,
@@ -23,24 +23,31 @@ CREATE TABLE IF NOT EXISTS public.admin_users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
-ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_username ON public.admin_profiles(username);
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_email ON public.admin_profiles(email);
 
-DROP POLICY IF EXISTS "Allow anon select on admin_users" ON public.admin_users;
-CREATE POLICY "Allow anon select on admin_users" ON public.admin_users
+ALTER TABLE public.admin_profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow anon select on admin_profiles" ON public.admin_profiles;
+CREATE POLICY "Allow anon select on admin_profiles" ON public.admin_profiles
   FOR SELECT TO anon, authenticated USING (true);
 
-DROP POLICY IF EXISTS "Allow anon insert on admin_users" ON public.admin_users;
-CREATE POLICY "Allow anon insert on admin_users" ON public.admin_users
+DROP POLICY IF EXISTS "Allow anon insert on admin_profiles" ON public.admin_profiles;
+CREATE POLICY "Allow anon insert on admin_profiles" ON public.admin_profiles
   FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Allow anon update on admin_users" ON public.admin_users;
-CREATE POLICY "Allow anon update on admin_users" ON public.admin_users
+DROP POLICY IF EXISTS "Allow anon update on admin_profiles" ON public.admin_profiles;
+CREATE POLICY "Allow anon update on admin_profiles" ON public.admin_profiles
   FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
-GRANT ALL ON public.admin_users TO anon, authenticated, service_role;
+DROP POLICY IF EXISTS "Allow anon delete on admin_profiles" ON public.admin_profiles;
+CREATE POLICY "Allow anon delete on admin_profiles" ON public.admin_profiles
+  FOR DELETE TO anon, authenticated USING (true);
+
+GRANT ALL ON public.admin_profiles TO anon, authenticated, service_role;
 
 -- Default Admin: username=admin, password=admin123
-INSERT INTO public.admin_users (username, email, password_hash, full_name, role, is_active)
+INSERT INTO public.admin_profiles (username, email, password_hash, full_name, role, is_active)
 VALUES (
     'admin',
     'admin@university.edu.ph',
@@ -53,6 +60,9 @@ ON CONFLICT (username) DO UPDATE
 SET password_hash = EXCLUDED.password_hash,
     full_name = EXCLUDED.full_name,
     role = EXCLUDED.role;`;
+
+// Export alias for backward compatibility
+export const ADMIN_USERS_SQL = ADMIN_PROFILES_SQL;
 
 // ──────────────────────────────────────────────
 // PASSWORD HASHING (Web Crypto API – SHA-256)
@@ -109,26 +119,28 @@ export function logoutAdmin(): void {
 // DB ROW SHAPE
 // ──────────────────────────────────────────────
 
-interface AdminUserRow {
+interface AdminProfileRow {
   id: string;
   username: string;
   email?: string | null;
-  password_hash: string;
-  full_name: string;
-  role: string;
-  is_active: boolean;
+  password_hash?: string | null;
+  password?: string | null;
+  full_name?: string | null;
+  name?: string | null;
+  role?: string | null;
+  is_active?: boolean | null;
   last_login?: string | null;
   created_at?: string;
 }
 
-function rowToAdminUser(row: AdminUserRow): AdminUser {
+function rowToAdminUser(row: AdminProfileRow): AdminUser {
   return {
     id: row.id,
     username: row.username,
     email: row.email ?? undefined,
-    fullName: row.full_name,
-    role: row.role,
-    isActive: row.is_active,
+    fullName: row.full_name || row.name || row.username || 'System Administrator',
+    role: row.role || 'Super Admin',
+    isActive: row.is_active !== false,
     lastLogin: row.last_login ?? undefined,
     createdAt: row.created_at,
   };
@@ -139,8 +151,8 @@ function rowToAdminUser(row: AdminUserRow): AdminUser {
 // ──────────────────────────────────────────────
 
 /**
- * Authenticate an admin against the Supabase admin_users table.
- * Falls back gracefully when the table is missing (with SQL helper).
+ * Authenticate an admin against the Supabase admin_profiles table
+ * (with transparent fallback to admin_users if present).
  */
 export async function loginAdmin(credentials: LoginCredentials): Promise<AuthResponse> {
   const { username, password, rememberMe = false } = credentials;
@@ -157,22 +169,36 @@ export async function loginAdmin(credentials: LoginCredentials): Promise<AuthRes
     };
   }
 
+  const cleanUser = username.trim().toLowerCase();
+
   try {
-    const { data, error } = await client
-      .from('admin_users')
-      .select('id, username, email, password_hash, full_name, role, is_active, last_login, created_at')
-      .eq('username', username.trim().toLowerCase())
-      .eq('is_active', true)
+    // Try admin_profiles first, fallback to admin_users
+    let activeTable = 'admin_profiles';
+    let queryResult = await client
+      .from(activeTable)
+      .select('*')
+      .or(`username.eq.${cleanUser},email.eq.${cleanUser}`)
       .maybeSingle();
 
+    // If admin_profiles does not exist, try admin_users
+    if (queryResult.error && (queryResult.error.code === '42P01' || queryResult.error.message?.includes('does not exist'))) {
+      activeTable = 'admin_users';
+      queryResult = await client
+        .from(activeTable)
+        .select('*')
+        .or(`username.eq.${cleanUser},email.eq.${cleanUser}`)
+        .maybeSingle();
+    }
+
+    const { data, error } = queryResult;
+
     if (error) {
-      // Table does not exist yet
       if (error.code === '42P01' || error.message?.includes('does not exist')) {
         return {
           success: false,
-          error: 'The admin_users table has not been created yet. Please run the SQL setup script in your Supabase SQL Editor.',
+          error: 'The admin_profiles table has not been created yet. Please run the SQL setup script in your Supabase SQL Editor.',
           isTableMissing: true,
-          sqlToRun: ADMIN_USERS_SQL,
+          sqlToRun: ADMIN_PROFILES_SQL,
         };
       }
       return {
@@ -185,18 +211,32 @@ export async function loginAdmin(credentials: LoginCredentials): Promise<AuthRes
       return { success: false, error: 'Invalid username or password. Please try again.' };
     }
 
-    const row = data as AdminUserRow;
-    const inputHash = await hashPassword(password);
+    const row = data as AdminProfileRow;
 
-    if (inputHash !== row.password_hash) {
+    // Check active status
+    if (row.is_active === false) {
+      return { success: false, error: 'This administrator account has been deactivated.' };
+    }
+
+    const inputHash = await hashPassword(password);
+    const storedHash = row.password_hash || row.password || '';
+
+    // Allow match on SHA-256 hash OR direct plaintext password
+    const isMatch = (storedHash === inputHash) || (storedHash === password);
+
+    if (!isMatch) {
       return { success: false, error: 'Invalid username or password. Please try again.' };
     }
 
-    // Update last_login timestamp
-    await client
-      .from('admin_users')
-      .update({ last_login: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq('id', row.id);
+    // Update last_login timestamp in background
+    try {
+      await client
+        .from(activeTable)
+        .update({ last_login: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', row.id);
+    } catch {
+      // Non-fatal if timestamp update fails
+    }
 
     const user = rowToAdminUser(row);
     storeSession(user, rememberMe);
@@ -226,18 +266,34 @@ export async function changeAdminPassword(
   }
 
   try {
-    const { data, error: fetchError } = await client
-      .from('admin_users')
-      .select('password_hash')
+    let activeTable = 'admin_profiles';
+    let fetchResult = await client
+      .from(activeTable)
+      .select('*')
       .eq('id', adminId)
       .maybeSingle();
+
+    if (fetchResult.error && (fetchResult.error.code === '42P01' || fetchResult.error.message?.includes('does not exist'))) {
+      activeTable = 'admin_users';
+      fetchResult = await client
+        .from(activeTable)
+        .select('*')
+        .eq('id', adminId)
+        .maybeSingle();
+    }
+
+    const { data, error: fetchError } = fetchResult;
 
     if (fetchError || !data) {
       return { success: false, error: 'Could not retrieve admin account.' };
     }
 
+    const row = data as AdminProfileRow;
+    const storedHash = row.password_hash || row.password || '';
     const oldHash = await hashPassword(oldPassword);
-    if (oldHash !== (data as { password_hash: string }).password_hash) {
+
+    const isMatch = (storedHash === oldHash) || (storedHash === oldPassword);
+    if (!isMatch) {
       return { success: false, error: 'Current password is incorrect.' };
     }
 
@@ -246,9 +302,19 @@ export async function changeAdminPassword(
     }
 
     const newHash = await hashPassword(newPassword);
+    const updatePayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if ('password_hash' in row || !('password' in row)) {
+      updatePayload.password_hash = newHash;
+    } else {
+      updatePayload.password = newHash;
+    }
+
     const { error: updateError } = await client
-      .from('admin_users')
-      .update({ password_hash: newHash, updated_at: new Date().toISOString() })
+      .from(activeTable)
+      .update(updatePayload)
       .eq('id', adminId);
 
     if (updateError) {

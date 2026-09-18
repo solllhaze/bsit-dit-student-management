@@ -16,7 +16,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { LoginCredentials, AuthResponse } from '../types';
-import { loginAdmin, ADMIN_USERS_SQL } from '../services/authService';
+import { loginAdmin, ADMIN_PROFILES_SQL } from '../services/authService';
 import { getSupabaseAnonKey } from '../lib/supabase';
 
 interface AdminLoginProps {
@@ -80,7 +80,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
 
   const handleCopySql = async () => {
     try {
-      await navigator.clipboard.writeText(ADMIN_USERS_SQL);
+      await navigator.clipboard.writeText(ADMIN_PROFILES_SQL);
       setCopiedSql(true);
       setTimeout(() => setCopiedSql(false), 2500);
     } catch {
@@ -148,11 +148,10 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
 
               {/* DB Status Pill */}
               <div
-                className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
-                  dbConnected
-                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-                    : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
-                }`}
+                className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${dbConnected
+                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                  : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                  }`}
               >
                 <Database className="w-3 h-3" />
                 {dbConnected ? 'DB Connected' : 'No DB Key'}
@@ -321,7 +320,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
                     </button>
                   </div>
                   <pre className="text-[10px] text-slate-400 p-3.5 bg-slate-950/50 overflow-x-auto max-h-48 leading-relaxed whitespace-pre-wrap font-mono">
-                    {ADMIN_USERS_SQL}
+                    {ADMIN_PROFILES_SQL}
                   </pre>
                 </div>
               )}

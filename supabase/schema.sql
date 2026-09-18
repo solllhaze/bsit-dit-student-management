@@ -172,9 +172,9 @@ DROP POLICY IF EXISTS "Allow anon delete on students" ON public.students;
 CREATE POLICY "Allow anon delete on students" ON public.students FOR DELETE TO anon, authenticated USING (true);
 
 -- ============================================
--- 10. Create ADMIN USERS table (Authentication)
+-- 10. Create ADMIN PROFILES table (Authentication)
 -- ============================================
-CREATE TABLE IF NOT EXISTS public.admin_users (
+CREATE TABLE IF NOT EXISTS public.admin_profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username TEXT NOT NULL UNIQUE,
     email TEXT UNIQUE,
@@ -187,27 +187,27 @@ CREATE TABLE IF NOT EXISTS public.admin_users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
-CREATE INDEX IF NOT EXISTS idx_admin_users_username ON public.admin_users(username);
-CREATE INDEX IF NOT EXISTS idx_admin_users_email ON public.admin_users(email);
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_username ON public.admin_profiles(username);
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_email ON public.admin_profiles(email);
 
--- Admin Users RLS Policies
-ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+-- Admin Profiles RLS Policies
+ALTER TABLE public.admin_profiles ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Allow anon select on admin_users" ON public.admin_users;
-CREATE POLICY "Allow anon select on admin_users" ON public.admin_users FOR SELECT TO anon, authenticated USING (true);
+DROP POLICY IF EXISTS "Allow anon select on admin_profiles" ON public.admin_profiles;
+CREATE POLICY "Allow anon select on admin_profiles" ON public.admin_profiles FOR SELECT TO anon, authenticated USING (true);
 
-DROP POLICY IF EXISTS "Allow anon insert on admin_users" ON public.admin_users;
-CREATE POLICY "Allow anon insert on admin_users" ON public.admin_users FOR INSERT TO anon, authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow anon insert on admin_profiles" ON public.admin_profiles;
+CREATE POLICY "Allow anon insert on admin_profiles" ON public.admin_profiles FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Allow anon update on admin_users" ON public.admin_users;
-CREATE POLICY "Allow anon update on admin_users" ON public.admin_users FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow anon update on admin_profiles" ON public.admin_profiles;
+CREATE POLICY "Allow anon update on admin_profiles" ON public.admin_profiles FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Allow anon delete on admin_users" ON public.admin_users;
-CREATE POLICY "Allow anon delete on admin_users" ON public.admin_users FOR DELETE TO anon, authenticated USING (true);
+DROP POLICY IF EXISTS "Allow anon delete on admin_profiles" ON public.admin_profiles;
+CREATE POLICY "Allow anon delete on admin_profiles" ON public.admin_profiles FOR DELETE TO anon, authenticated USING (true);
 
 -- Seed Default Admin Account: admin / admin123
 -- SHA-256 for 'admin123': 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
-INSERT INTO public.admin_users (username, email, password_hash, full_name, role, is_active)
+INSERT INTO public.admin_profiles (username, email, password_hash, full_name, role, is_active)
 VALUES (
     'admin',
     'admin@university.edu.ph',
