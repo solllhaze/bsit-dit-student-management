@@ -183,13 +183,19 @@ async function resolveSectionId(sectionName: string): Promise<string | null> {
   // Ensure lookups are loaded
   await fetchLookupData();
 
-  // Search by section_name (e.g. 'BSIT 3B')
-  let match = cachedSections.find((s) => s.section_name === sectionName);
+  const cleanInput = sectionName.trim().toLowerCase();
+
+  // Search by exact or case-insensitive section_name (e.g. 'BSIT 3B')
+  let match = cachedSections.find(
+    (s) => s.section_name.trim().toLowerCase() === cleanInput
+  );
 
   if (!match) {
     // Force a fresh fetch
     await fetchLookupData(true);
-    match = cachedSections.find((s) => s.section_name === sectionName);
+    match = cachedSections.find(
+      (s) => s.section_name.trim().toLowerCase() === cleanInput
+    );
   }
 
   return match?.id ?? null;

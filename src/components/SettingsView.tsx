@@ -185,16 +185,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const sqlCode = `-- SQL Setup for Supabase "students" Table:
+  const sqlCode = `-- ============================================================
+-- BSIT / DIT STUDENT MANAGEMENT SYSTEM - DATABASE SCHEMA
+-- Run this in your Supabase SQL Editor: https://supabase.com/dashboard/project/ppynzitnihxmdgeqsrjd/sql
+-- ============================================================
+
+-- 1. PROGRAMS
+CREATE TABLE IF NOT EXISTS public.programs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    program_code TEXT NOT NULL UNIQUE,
+    program_name TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- 2. YEAR LEVELS
+CREATE TABLE IF NOT EXISTS public.year_levels (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    level_order INTEGER NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- 3. SECTIONS
+CREATE TABLE IF NOT EXISTS public.sections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    program_id UUID NOT NULL REFERENCES public.programs(id) ON DELETE RESTRICT,
+    year_level_id UUID NOT NULL REFERENCES public.year_levels(id) ON DELETE RESTRICT,
+    section_name TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    UNIQUE(program_id, year_level_id, section_name)
+);
+
+-- 4. STUDENTS
 CREATE TABLE IF NOT EXISTS public.students (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     middle_name TEXT,
     last_name TEXT NOT NULL,
-    program TEXT NOT NULL,
-    year_level TEXT NOT NULL,
-    section TEXT NOT NULL,
+    section_id UUID NOT NULL REFERENCES public.sections(id) ON DELETE RESTRICT,
     email TEXT,
     contact_number TEXT,
     status TEXT NOT NULL DEFAULT 'Regular',
@@ -202,12 +231,59 @@ CREATE TABLE IF NOT EXISTS public.students (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
-ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
+-- 5. ADMIN USERS
+CREATE TABLE IF NOT EXISTS public.admin_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username TEXT NOT NULL UNIQUE,
+    email TEXT UNIQUE,
+    password_hash TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'System Administrator',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    last_login TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
 
-CREATE POLICY "Allow anon select on students" ON public.students FOR SELECT TO anon, authenticated USING (true);
-CREATE POLICY "Allow anon insert on students" ON public.students FOR INSERT TO anon, authenticated WITH CHECK (true);
-CREATE POLICY "Allow anon update on students" ON public.students FOR UPDATE TO anon, authenticated USING (true);
-CREATE POLICY "Allow anon delete on students" ON public.students FOR DELETE TO anon, authenticated USING (true);`;
+-- 6. INDEXES
+CREATE INDEX IF NOT EXISTS idx_students_student_id ON public.students(student_id);
+CREATE INDEX IF NOT EXISTS idx_students_section_id ON public.students(section_id);
+CREATE INDEX IF NOT EXISTS idx_sections_program_id ON public.sections(program_id);
+CREATE INDEX IF NOT EXISTS idx_sections_year_level_id ON public.sections(year_level_id);
+
+-- 7. ROW LEVEL SECURITY POLICIES
+ALTER TABLE public.programs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.year_levels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow anon all on programs" ON public.programs;
+CREATE POLICY "Allow anon all on programs" ON public.programs FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon all on year_levels" ON public.year_levels;
+CREATE POLICY "Allow anon all on year_levels" ON public.year_levels FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon all on sections" ON public.sections;
+CREATE POLICY "Allow anon all on sections" ON public.sections FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon all on students" ON public.students;
+CREATE POLICY "Allow anon all on students" ON public.students FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon all on admin_users" ON public.admin_users;
+CREATE POLICY "Allow anon all on admin_users" ON public.admin_users FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- 8. SCHEMA GRANTS
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+
+-- 9. SEED DEFAULT ADMIN USER
+INSERT INTO public.admin_users (username, email, password_hash, full_name, role, is_active)
+VALUES ('admin', 'admin@dssc.edu.ph', 'bsitdit_2026', 'System Administrator', 'Super Admin', true)
+ON CONFLICT (username) DO UPDATE
+SET email = EXCLUDED.email, password_hash = EXCLUDED.password_hash, role = EXCLUDED.role;`;
 
   const handleCopySql = () => {
     navigator.clipboard.writeText(sqlCode);

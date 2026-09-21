@@ -44,9 +44,30 @@ WHERE p.program_code = 'DIT'
   AND y.level_order <= 3
 ON CONFLICT DO NOTHING;
 
--- VERIFY (should show: programs=2, year_levels=4, sections=21)
-SELECT 'programs'   AS tbl, COUNT(*) AS rows FROM public.programs
+-- 4. ADMIN USER ACCOUNTS (for System Login)
+INSERT INTO public.admin_users (username, email, password_hash, full_name, role, is_active)
+VALUES (
+  'admin',
+  'admin@dssc.edu.ph',
+  'bsitdit_2026',
+  'System Administrator',
+  'Super Admin',
+  true
+)
+ON CONFLICT (username) DO UPDATE
+SET email = EXCLUDED.email,
+    password_hash = EXCLUDED.password_hash,
+    full_name = EXCLUDED.full_name,
+    role = EXCLUDED.role,
+    is_active = true;
+
+-- VERIFY (should show: programs=2, year_levels=4, sections=21, admin_users>=1)
+SELECT 'programs'       AS tbl, COUNT(*) AS rows FROM public.programs
 UNION ALL
-SELECT 'year_levels',       COUNT(*)         FROM public.year_levels
+SELECT 'year_levels',           COUNT(*)         FROM public.year_levels
 UNION ALL
-SELECT 'sections',          COUNT(*)         FROM public.sections;
+SELECT 'sections',              COUNT(*)         FROM public.sections
+UNION ALL
+SELECT 'students',              COUNT(*)         FROM public.students
+UNION ALL
+SELECT 'admin_users',           COUNT(*)         FROM public.admin_users;
